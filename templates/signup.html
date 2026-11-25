@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}नवीन शेतकरी नोंदणी | कृषी सखी - Krishi Sakhi AI{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-wrapper">
+        <!-- Left Brand Showcase Panel -->
+        <div class="auth-brand-side">
+            <div class="brand-header">
+                <div class="brand-logo-icon">
+                    <i class="fa-solid fa-wheat-awn"></i>
+                </div>
+                <div>
+                    <h1 class="brand-title">कृषी सखी</h1>
+                    <span class="brand-subtitle">Krishi Sakhi • Farmer AI & Voice Assistant</span>
+                </div>
+            </div>
+
+            <div class="brand-quote-box">
+                <i class="fa-solid fa-quote-left quote-icon"></i>
+                <p>माझ्या सोयाबीनवरील किडीचे अचूक निदान करून कृषी सखीने माझे नुकसान वाचवले. मराठीत बोलून उत्तरे मिळणे अत्यंत सोपे आहे!</p>
+                <div class="quote-author">- बापूसाहेब मोरे, शेतकरी (कोल्हापूर)</div>
+            </div>
+
+            <div class="brand-perks-list">
+                <div class="perk-item"><i class="fa-solid fa-check"></i> १००% मोफत आणि सुरक्षित AI तंत्रज्ञान</div>
+                <div class="perk-item"><i class="fa-solid fa-check"></i> स्थानिक भाषेत व्हॉईस सपोर्ट (बोलून प्रश्न विचारा)</div>
+                <div class="perk-item"><i class="fa-solid fa-check"></i> कृषी शास्त्रज्ञांच्या ज्ञानावर आधारित सल्ले</div>
+            </div>
+        </div>
+
+        <!-- Right Sign Up Card -->
+        <div class="auth-form-side">
+            <div class="auth-card auth-card-wide">
+                <div class="auth-card-header">
+                    <h2>नवीन शेतकरी नोंदणी <span class="en-sub">(Farmer Sign Up)</span></h2>
+                    <p>कृषी सखी AI सहाय्यक वापरण्यासाठी आपले खाते तयार करा</p>
+                    <button type="button" class="btn btn-outline-sm autofill-btn" onclick="fillDemoSignup()">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> नमुना माहिती भरा (Auto-fill Sample Info)
+                    </button>
+                </div>
+
+                <form action="{{ url_for('signup') }}" method="POST" class="auth-form" id="signupForm">
+                    <div class="form-row">
+                        <div class="form-group col-half">
+                            <label for="name"><i class="fa-solid fa-user"></i> पूर्ण नाव (Full Name) *</label>
+                            <input type="text" id="name" name="name" class="form-control" placeholder="उदा. सुरेश शिंदे" required>
+                        </div>
+                        <div class="form-group col-half">
+                            <label for="phone"><i class="fa-solid fa-phone"></i> मोबाईल नंबर (Mobile No.) *</label>
+                            <input type="tel" id="phone" name="phone" class="form-control" placeholder="उदा. 9822000000" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="identifier"><i class="fa-solid fa-envelope"></i> लॉगिन आयडी / ईमेल (Email or ID) *</label>
+                        <input type="text" id="identifier" name="identifier" class="form-control" placeholder="उदा. suresh@krishisakhi.in किंवा 9822000000" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-half">
+                            <label for="location"><i class="fa-solid fa-location-dot"></i> जिल्हा व राज्य (Location)</label>
+                            <input type="text" id="location" name="location" class="form-control" placeholder="उदा. नाशिक, महाराष्ट्र">
+                        </div>
+                        <div class="form-group col-half">
+                            <label for="crops"><i class="fa-solid fa-seedling"></i> मुख्य पिके (Primary Crops)</label>
+                            <input type="text" id="crops" name="crops" class="form-control" placeholder="उदा. कांदा, द्राक्षे, सोयाबीन">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="language"><i class="fa-solid fa-language"></i> पसंतीची भाषा (Preferred Language)</label>
+                        <select id="language" name="language" class="form-control">
+                            <option value="mr" selected>मराठी (Marathi)</option>
+                            <option value="hi">हिंदी (Hindi)</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="signupPassword"><i class="fa-solid fa-lock"></i> पासवर्ड (Password) *</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" id="signupPassword" name="password" class="form-control" placeholder="किमान ६ अक्षरी पासवर्ड तयार करा" required>
+                            <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('signupPassword', this)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <i class="fa-solid fa-user-plus"></i> नोंदणी पूर्ण करा व सुरू करा (Register & Enter)
+                    </button>
+                </form>
+
+                <div class="auth-card-footer">
+                    <p>आधीच खाते आहे का? <a href="{{ url_for('login') }}">येथे लॉगिन करा (Sign In)</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}लॉगिन | कृषी सखी - Krishi Sakhi AI{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="auth-page">
+    <div class="auth-wrapper">
+        <!-- Left Brand Showcase Panel -->
+        <div class="auth-brand-side">
+            <div class="brand-header">
+                <div class="brand-logo-icon">
+                    <i class="fa-solid fa-wheat-awn"></i>
+                </div>
+                <div>
+                    <h1 class="brand-title">कृषी सखी</h1>
+                    <span class="brand-subtitle">Krishi Sakhi • Farmer AI & Voice Assistant</span>
+                </div>
+            </div>
+
+            <div class="brand-features">
+                <div class="feature-item">
+                    <div class="feature-icon"><i class="fa-solid fa-microphone-lines"></i></div>
+                    <div>
+                        <h4>बहुभाषिक व्हॉईस असिस्टंट (Multilingual Voice)</h4>
+                        <p>मराठी, हिंदी व इंग्रजीत थेट बोलून शेती विषयक प्रश्न विचारा.</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon"><i class="fa-solid fa-bug"></i></div>
+                    <div>
+                        <h4>पीक कीड व रोग निवारण (Instant Pest Diagnosis)</h4>
+                        <p>लक्षणे सांगा आणि अचूक औषध व खत फवारणी सल्ला मिळवा.</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon"><i class="fa-solid fa-cloud-sun-rain"></i></div>
+                    <div>
+                        <h4>हवामान व बाजार भाव (Weather & Mandi Rates)</h4>
+                        <p>स्थानिक कृषी हवामान अंदाज व चालू बाजार भावाची माहिती.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="brand-footer-pill">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>शेतकऱ्यांचा विश्वासू डिजिटल सखा | Free Tier AI Powered</span>
+            </div>
+        </div>
+
+        <!-- Right Login Card -->
+        <div class="auth-form-side">
+            <div class="auth-card">
+                <div class="auth-card-header">
+                    <h2>शेतकरी लॉगिन <span class="en-sub">(Farmer Login)</span></h2>
+                    <p>आपल्या शेतातील स्मार्ट सल्लागाराशी जोडले जा</p>
+                </div>
+
+                <!-- 1-Click Quick Demo Login Button -->
+                <div class="demo-card-highlight">
+                    <div class="demo-header">
+                        <span class="badge-demo"><i class="fa-solid fa-bolt"></i> जलद चाचणी / Quick Test</span>
+                    </div>
+                    <p class="demo-desc">कोणताही फॉर्म न भरता एका क्लिकमध्ये <strong>रमेश पाटील (डेमो शेतकरी)</strong> म्हणून थेट डॅशबोर्डवर प्रवेश करा:</p>
+                    <a href="{{ url_for('login', demo='true') }}" class="btn btn-demo">
+                        <i class="fa-solid fa-user-astronaut"></i> थेट डेमो खात्याने प्रवेश करा (1-Click Demo Login)
+                    </a>
+                </div>
+
+                <div class="auth-divider">
+                    <span>किंवा स्वतःच्या खात्याने लॉगिन करा</span>
+                </div>
+
+                <!-- Regular Login Form -->
+                <form action="{{ url_for('login') }}" method="POST" class="auth-form" id="loginForm">
+                    <input type="hidden" name="is_demo_action" value="false">
+
+                    <div class="form-group">
+                        <label for="identifier">
+                            <i class="fa-solid fa-phone"></i> मोबाईल क्र. किंवा ईमेल (Mobile / Email)
+                        </label>
+                        <input type="text" id="identifier" name="identifier" class="form-control" 
+                               placeholder="उदा. 9876543210 किंवा demo@krishisakhi.in" 
+                               value="{{ identifier or '' }}" required autofocus>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="label-row">
+                            <label for="password"><i class="fa-solid fa-lock"></i> पासवर्ड (Password)</label>
+                            <a href="#" class="forgot-link" onclick="fillDemoCredentials(); return false;">डेमो पासवर्ड भरा</a>
+                        </div>
+                        <div class="password-input-wrapper">
+                            <input type="password" id="password" name="password" class="form-control" 
+                                   placeholder="आपला पासवर्ड प्रविष्ट करा" required>
+                            <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('password', this)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <i class="fa-solid fa-arrow-right-to-bracket"></i> लॉगिन करा (Login)
+                    </button>
+                </form>
+
+                <div class="auth-card-footer">
+                    <p>नवीन शेतकरी आहात का? <a href="{{ url_for('signup') }}">येथे नवीन नोंदणी करा (Sign Up)</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% endblock %}

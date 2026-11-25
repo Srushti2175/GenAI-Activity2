@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}कृषी सखी AI - स्मार्ट शेतकरी सहाय्यक (Krishi Sakhi Chatbot){% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="chat-layout">
+    <!-- Sidebar / Drawer -->
+    <aside class="chat-sidebar" id="chatSidebar">
+        <!-- Sidebar Brand -->
+        <div class="sidebar-brand">
+            <div class="brand-badge-row">
+                <div class="sidebar-logo-icon">
+                    <i class="fa-solid fa-wheat-awn"></i>
+                </div>
+                <div>
+                    <h2 class="sidebar-title">कृषी सखी</h2>
+                    <span class="sidebar-tagline">Farmer AI Companion</span>
+                </div>
+            </div>
+            <button class="btn-sidebar-close" id="sidebarCloseBtn" onclick="toggleSidebar()">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <!-- Farmer Profile Card -->
+        <div class="farmer-profile-card">
+            <div class="profile-avatar">
+                <i class="fa-solid fa-user-tie"></i>
+                <span class="online-indicator"></span>
+            </div>
+            <div class="profile-info">
+                <div class="profile-name-row">
+                    <h4 class="profile-name">{{ user.name }}</h4>
+                    {% if user.is_demo %}
+                        <span class="badge-demo-pill" title="डेमो खाते (Demo Account)">डेमो</span>
+                    {% endif %}
+                </div>
+                <p class="profile-detail"><i class="fa-solid fa-location-dot"></i> {{ user.location }}</p>
+                <p class="profile-detail"><i class="fa-solid fa-seedling"></i> {{ user.crops }}</p>
+            </div>
+        </div>
+
+        <!-- New Chat Button -->
+        <div class="sidebar-action">
+            <button class="btn btn-new-chat" onclick="startNewChat()">
+                <i class="fa-solid fa-plus"></i> <span data-i18n="new_chat">नवीन चर्चा (New Chat)</span>
+            </button>
+        </div>
+
+        <!-- Chat History Sessions List -->
+        <div class="sidebar-section">
+            <h5 class="section-title" data-i18n="recent_queries"><i class="fa-regular fa-clock"></i> अलीकडील प्रश्न (Recent Chats)</h5>
+            <div class="history-list" id="historyList">
+                {% for item in sessions %}
+                <div class="history-item {% if item.active %}active{% endif %}" onclick="selectSession('{{ item.id }}', this)">
+                    <i class="fa-regular fa-message"></i>
+                    <div class="history-text">
+                        <span class="history-title">{{ item.title }}</span>
+                        <span class="history-date">{{ item.date }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Mini Farm Advisory Widget -->
+        <div class="sidebar-widget">
+            <div class="widget-header">
+                <span><i class="fa-solid fa-cloud-sun"></i> आजचे हवामान (Weather)</span>
+                <span class="widget-tag">सांगली</span>
+            </div>
+            <div class="widget-body">
+                <div class="weather-temp">३२°C</div>
+                <div class="weather-cond">अंशतः ढगाळ • ४०% पावसाची शक्यता</div>
+            </div>
+        </div>
+
+        <!-- Sidebar Footer / Logout -->
+        <div class="sidebar-footer">
+            <a href="{{ url_for('logout') }}" class="btn-logout" title="लॉगआउट करा">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i> <span data-i18n="logout">लॉगआउट (Logout)</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Overlay for mobile drawer -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <!-- Main Chat Content Container -->
+    <main class="chat-main">
+        <!-- Top Chat Header Bar -->
+        <header class="chat-header">
+            <div class="header-left">
+                <button class="btn-icon btn-menu" onclick="toggleSidebar()" title="मेनू उघडा">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <div class="assistant-status">
+                    <div class="assistant-avatar">
+                        <i class="fa-solid fa-seedling"></i>
+                        <span class="status-dot"></span>
+                    </div>
+                    <div>
+                        <h3 class="assistant-name">कृषी सखी AI <span class="badge-online">सक्रिय • Online</span></h3>
+                        <p class="assistant-role" data-i18n="assistant_tagline">शेतकरी मित्र व व्हॉईस सहाय्यक</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <!-- Multilingual Language Selector -->
+                <div class="language-dropdown">
+                    <label for="languageSelect"><i class="fa-solid fa-globe"></i></label>
+                    <select id="languageSelect" onchange="changeLanguage(this.value)">
+                        <option value="mr" {% if user.language == 'mr' %}selected{% endif %}>मराठी</option>
+                        <option value="hi" {% if user.language == 'hi' %}selected{% endif %}>हिंदी</option>
+                        <option value="en" {% if user.language == 'en' %}selected{% endif %}>English</option>
+                    </select>
+                </div>
+
+                <!-- Voice Audio Auto-play Toggle -->
+                <button class="btn-icon btn-voice-toggle active" id="voiceAutoSpeakBtn" onclick="toggleAutoSpeak()" title="ऑटो व्हॉईस उत्तर (Auto Read Answers)">
+                    <i class="fa-solid fa-volume-high"></i>
+                </button>
+
+                <!-- Clear Chat Action -->
+                <button class="btn-icon" onclick="clearCurrentChat()" title="चर्चा साफ करा (Clear Chat)">
+                    <i class="fa-regular fa-trash-can"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Message Stream Area -->
+        <div class="chat-messages" id="chatMessages">
+            <!-- Welcome Hero Box (Shown on fresh chat) -->
+            <div class="welcome-hero" id="welcomeHero">
+                <div class="hero-icon-ring">
+                    <i class="fa-solid fa-hand-holding-hand"></i>
+                </div>
+                <h2 class="hero-title" id="welcomeTitle">राम-राम, {{ user.name.split()[0] }} जी!</h2>
+                <p class="hero-subtitle" id="welcomeSubtitle">
+                    मी आपली <strong>कृषी सखी</strong> आहे. आपल्या पिकांची कीड, हवामान, खते किंवा सरकारी योजनांबद्दल कोणताही प्रश्न मराठी, हिंदी किंवा इंग्रजीत विचारा. आपण खालील मायक्रोफोन दाबून थेट <strong>बोलूनही</strong> विचारू शकता!
+                </p>
+
+                <!-- Quick Suggested Prompt Chips -->
+                <div class="prompt-chips-grid">
+                    <button class="prompt-chip" onclick="sendPrompt('सोयाबीनवरील पाने खाणाऱ्या अळीसाठी सर्वोत्तम कीटकनाशक कोणते?')">
+                        <i class="fa-solid fa-bug"></i>
+                        <span>सोयाबीन कीड निवारण सल्ला</span>
+                    </button>
+                    <button class="prompt-chip" onclick="sendPrompt('माझ्या परिसरातील पुढील २ दिवसांचा पावसाचा हवामान अंदाज सांगा')">
+                        <i class="fa-solid fa-cloud-sun-rain"></i>
+                        <span>पुढील २ दिवसांचा हवामान अंदाज</span>
+                    </button>
+                    <button class="prompt-chip" onclick="sendPrompt('पीएम-किसान योजनेचा पुढील हप्ता कधी जमा होणार व पात्रता काय?')">
+                        <i class="fa-solid fa-landmark"></i>
+                        <span>PM-KISAN हप्ता व पात्रता</span>
+                    </button>
+                    <button class="prompt-chip" onclick="sendPrompt('कापूस पिकासाठी योग्य खत व्यवस्थापन आणि युरियाचे प्रमाण काय असावे?')">
+                        <i class="fa-solid fa-flask"></i>
+                        <span>कापूस खत व्यवस्थापन सल्ला</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Voice Recording Live Visualizer Banner (Appears when Mic is active) -->
+        <div class="voice-recording-banner" id="voiceBanner" style="display: none;">
+            <div class="recording-pulse">
+                <span class="pulse-ring"></span>
+                <i class="fa-solid fa-microphone"></i>
+            </div>
+            <div class="recording-text">
+                <span class="recording-status" data-i18n="listening">कृषी सखी ऐकत आहे... (Listening...)</span>
+                <span class="recording-tip" data-i18n="speak_now">आपला शेतीविषयक प्रश्न बोला</span>
+            </div>
+            <button class="btn-stop-recording" onclick="stopVoiceRecognition()">
+                <i class="fa-solid fa-stop"></i> पूर्ण झाले (Done)
+            </button>
+        </div>
+
+        <!-- Chat Input Bar -->
+        <div class="chat-input-container">
+            <form id="chatForm" onsubmit="handleFormSubmit(event)" class="chat-form">
+                <!-- Vision / Attachment button (Prepares for crop photo diagnosis) -->
+                <button type="button" class="btn-input-action" onclick="triggerPhotoUpload()" title="पिकाचा फोटो जोडा (Add Crop Photo)">
+                    <i class="fa-solid fa-camera"></i>
+                </button>
+                <input type="file" id="cropPhotoInput" accept="image/*" style="display: none;" onchange="handlePhotoSelected(this)">
+
+                <!-- Textarea -->
+                <div class="input-wrapper">
+                    <textarea id="userInput" rows="1" 
+                              placeholder="येथे आपला शेतीचा प्रश्न विचारा... (किंवा माईक वापरा)" 
+                              data-i18n-placeholder="input_placeholder"
+                              oninput="autoResizeTextarea(this)" 
+                              onkeydown="handleTextareaKeydown(event)"></textarea>
+                </div>
+
+                <!-- Microphone Voice Input Button -->
+                <button type="button" class="btn-input-action btn-mic" id="micBtn" onclick="toggleVoiceRecognition()" title="बोलून प्रश्न विचारा (Voice Input)">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+
+                <!-- Send Button -->
+                <button type="submit" class="btn-send" id="sendBtn" title="संदेश पाठवा">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+
+            <div class="chat-footer-note">
+                <i class="fa-solid fa-circle-check"></i> <span data-i18n="footer_note">कृषी सखी AI शेतकरी सहाय्यक • बहुभाषिक मोफत सेवा</span>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/translations.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

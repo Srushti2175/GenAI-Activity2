@@ -1,0 +1,41 @@
+# ============================================================
+# KRISHI SAKHI - .gitignore
+# ============================================================
+
+# ⚠️ NEVER commit secrets or API keys
+.env
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# FAISS indexes (Step 5) - typically large binary files
+*.index
+faiss_store/
+
+# Uploaded PDFs / knowledge base files (Step 4)
+knowledge_base/
+uploads/
+
+# Log files
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+README.md
