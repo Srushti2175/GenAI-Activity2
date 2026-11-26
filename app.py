@@ -2,7 +2,7 @@ import os
 import io
 import re
 import json
-import google.generativeai as genai
+from groq import Groq
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from gtts import gTTS
@@ -13,29 +13,15 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # ============================================================
-# GEMINI AI SETUP
+# GROQ AI SETUP
 # ============================================================
-GEMINI_READY = Config.validate()
+GROQ_READY = Config.validate()
 
-if GEMINI_READY:
-    genai.configure(api_key=Config.GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel(
-        model_name=Config.GEMINI_MODEL,
-        generation_config=genai.GenerationConfig(
-            temperature=0.4,
-            top_p=0.9,
-            max_output_tokens=600,
-        ),
-        safety_settings=[
-            {"category": "HARM_CATEGORY_HARASSMENT",       "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH",      "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT","threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT","threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        ]
-    )
-    print(f"[OK] Gemini API ready - model: {Config.GEMINI_MODEL}")
+if GROQ_READY:
+    groq_client = Groq(api_key=Config.GROQ_API_KEY)
+    print(f"[OK] Groq API ready - model: {Config.GROQ_MODEL}")
 else:
-    gemini_model = None
+    groq_client = None
 
 # ============================================================
 # SYSTEM PROMPT FOR AGRISATHI AI (KRISHI SAKHI)
@@ -162,102 +148,114 @@ DEMO_CHAT_SESSIONS = [
 
 # ============================================================
 # HELPER: BUILD LANGUAGE-AWARE GEMINI PROMPT WITH RAG CONTEXT
+# Compact prompt: system instructions kept short to minimize tokens
+# and stay well within the 15s generation timeout.
 # ============================================================
+
+# Compact system instruction (replaces the giant SYSTEM_PROMPT in the prompt)
+COMPACT_SYSTEM = (
+    "You are AgriSathi AI (कृषी सखी), a multilingual agricultural assistant for Indian farmers. "
+    "Reply ONLY in the farmer's selected language. "
+    "Be concise, practical and friendly. "
+    "Use the verified RAG knowledge base below as your primary source. "
+    "Structure: short direct answer → numbered steps → one safety note → one follow-up question. "
+    "Never invent chemical dosages or pesticide names. "
+    "For serious issues, recommend the nearest KVK."
+)
+
 def build_prompt(user_query: str, language: str, farmer: dict, rag_chunks: list = None) -> str:
     lang_map = {"mr": "Marathi (मराठी)", "hi": "Hindi (हिंदी)", "en": "English"}
     lang_label = lang_map.get(language, "Marathi (मराठी)")
 
     farmer_context = (
-        f"Farmer Name: {farmer.get('name', 'शेतकरी')}\n"
-        f"Location: {farmer.get('location', 'Maharashtra, India')}\n"
-        f"Primary Crops: {farmer.get('crops', 'Mixed crops')}\n"
-        f"User's Selected Interface Language: {lang_label}"
+        f"Farmer: {farmer.get('name', 'Farmer')} | "
+        f"Location: {farmer.get('location', 'Maharashtra')} | "
+        f"Crops: {farmer.get('crops', 'Mixed')} | "
+        f"Language: {lang_label}"
     )
 
-    rag_text = format_rag_context(rag_chunks) if rag_chunks else ""
-
-    parts = [SYSTEM_PROMPT]
-    if rag_text:
-        parts.append(rag_text)
-    parts.append(f"--- Farmer Context ---\n{farmer_context}")
-    parts.append(f"--- Farmer's Question ---\n{user_query}")
-    parts.append(
-        f"[MANDATORY LANGUAGE INSTRUCTION]: The farmer has selected {lang_label}. "
-        f"Your response will be READ OUT LOUD in {lang_label} voice using Text-To-Speech. "
-        f"You MUST write the ENTIRE answer in {lang_label}."
-    )
+    # Trim each RAG chunk to 300 chars to keep total prompt small
+    rag_lines = []
     if rag_chunks:
-        parts.append(
-            "[RAG CITATION INSTRUCTION]: Prioritize facts from the verified agricultural knowledge base above. "
-            "When referencing specific guidance (e.g. from the Organic Farming Training Manual or Pest Guides), "
-            "mention the manual name or page number in your answer so the farmer knows the official source."
-        )
+        rag_lines.append("=== VERIFIED KNOWLEDGE BASE ===")
+        for i, c in enumerate(rag_chunks, 1):
+            snippet = c.get("text", "")[:300].strip()
+            src = c.get("source_file", "Manual")
+            pg  = c.get("page", "?")
+            rag_lines.append(f"[{i}] {src} p.{pg}: {snippet}")
+        rag_lines.append("=== END KNOWLEDGE BASE ===")
+
+    parts = [
+        COMPACT_SYSTEM,
+        farmer_context,
+    ]
+    if rag_lines:
+        parts.append("\n".join(rag_lines))
+    parts.append(f"Question: {user_query}")
+    parts.append(f"[Respond ENTIRELY in {lang_label}. Keep reply under 300 words.]")
 
     return "\n\n".join(parts)
 
 # ============================================================
-# HELPER: CALL GEMINI API WITH ULTRA-FAST REUSE & RAG RETRIEVAL
+# HELPER: CALL GROQ API WITH MODEL FAILOVER & RAG RETRIEVAL
 # ============================================================
-def ask_gemini(user_query: str, language: str, farmer: dict):
-    global gemini_model
-    if not Config.GEMINI_API_KEY or Config.GEMINI_API_KEY == 'your_gemini_api_key_here':
+def ask_groq(user_query: str, language: str, farmer: dict):
+    import time as _time
+
+    if not GROQ_READY or not groq_client:
         return None, None, []
 
-    # Semantic Vector Search via FAISS (with BM25 fallback)
+    # Semantic Vector Search via FAISS (with fast local BM25 fallback)
     try:
         rag_chunks = search_knowledge_base(user_query, top_k=3)
     except Exception as e:
-        print(f"[RAG Search Error in ask_gemini]: {e}")
+        print(f"[RAG Search Error in ask_groq]: {e}")
         rag_chunks = []
 
-    prompt = build_prompt(user_query, language, farmer, rag_chunks)
+    user_prompt = build_prompt(user_query, language, farmer, rag_chunks)
 
-    # 1. Fast path: reuse already loaded model in milliseconds
-    failed_model = None
-    if gemini_model:
-        try:
-            response = gemini_model.generate_content(prompt, request_options={"timeout": 8})
-            if response and response.text:
-                model_name = getattr(gemini_model, 'model_name', Config.GEMINI_MODEL)
-                source = f"Google Gemini AI ({model_name}) + FAISS RAG" if rag_chunks else f"Google Gemini AI ({model_name})"
-                return response.text.strip(), source, rag_chunks
-        except Exception as e:
-            failed_model = getattr(gemini_model, 'model_name', Config.GEMINI_MODEL).replace('models/', '')
-            print(f"[Gemini Fast Path Error ({failed_model})]: {e}")
-
-    # 2. Fallback path: initialize fastest candidate model (skipping the failed one)
-    candidate_models = [Config.GEMINI_MODEL, 'gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-2.5-flash']
+    candidate_models = [
+        Config.GROQ_MODEL,
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "qwen/qwen3.8-27b",
+    ]
     seen = set()
-    if failed_model:
-        seen.add(failed_model)
-    candidate_models = [m for m in candidate_models if not (m in seen or seen.add(m))]
+    candidate_models = [m for m in candidate_models if m and not (m in seen or seen.add(m))]
 
-    for model_name in candidate_models:
-        try:
-            m = genai.GenerativeModel(
-                model_name=model_name,
-                generation_config=genai.GenerationConfig(
+    rag_active = len(rag_chunks) > 0
+    rag_label = " + RAG" if rag_active else ""
+
+    for idx, model_name in enumerate(candidate_models):
+        for attempt in range(2 if idx == 0 else 1):
+            try:
+                completion = groq_client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": COMPACT_SYSTEM},
+                        {"role": "user", "content": user_prompt},
+                    ],
                     temperature=0.4,
-                    top_p=0.9,
-                    max_output_tokens=600,
+                    max_tokens=600,
+                    timeout=15.0,
                 )
-            )
-            response = m.generate_content(prompt, request_options={"timeout": 8})
-            if response and response.text:
-                gemini_model = m
-                source = f"Google Gemini AI ({model_name}) + FAISS RAG" if rag_chunks else f"Google Gemini AI ({model_name})"
-                return response.text.strip(), source, rag_chunks
-        except Exception as e:
-            print(f"[Gemini Error with {model_name}]: {e}")
-            continue
+                text = completion.choices[0].message.content if completion and completion.choices else None
+                if text and text.strip():
+                    source = f"Groq AI ({model_name}){rag_label}"
+                    return text.strip(), source, rag_chunks
+            except Exception as e:
+                print(f"[Groq Error ({model_name}, attempt {attempt+1})]: {type(e).__name__}: {str(e)[:150]}")
+                if idx == 0 and attempt == 0:
+                    _time.sleep(0.8)
 
+    print("[Groq CRITICAL]: All candidate models failed.")
     return None, None, []
 
 # ============================================================
 # HELPER: STATIC FALLBACK RESPONSES (when API key not set / no live AI)
 # ============================================================
 def _server_busy_message(language: str, farmer: dict) -> tuple:
-    """Friendly 'server busy' reply used when GEMINI_READY but API call failed."""
+    """Friendly 'server busy' reply used when GROQ_READY but API call failed."""
     name = farmer.get("name", "शेतकरी").split()[0]
     if language == 'hi':
         return (
@@ -281,8 +279,7 @@ def _server_busy_message(language: str, farmer: dict) -> tuple:
 
 def fallback_response(user_query: str, language: str, farmer: dict):
     """
-    Static demo responses shown ONLY when GEMINI_API_KEY is not configured.
-    API-key hint text is shown here because there is genuinely no key set.
+    Static agricultural responses shown when GROQ_API_KEY is not configured.
     """
     lower = user_query.lower()
     name  = farmer.get("name", "शेतकरी").split()[0]
@@ -293,30 +290,27 @@ def fallback_response(user_query: str, language: str, farmer: dict):
     if any(w in lower for w in pest_kw):
         if language == 'mr':
             return (
-                "🌾 **कीड नियंत्रण सल्ला (Demo Mode):**\n\n"
+                "🌾 **कीड नियंत्रण सल्ला:**\n\n"
                 "1. **लक्षणे:** पानांना छिद्रे — लष्करी अळी किंवा पाने खाणाऱ्या अळीची लक्षणे.\n"
                 "2. **जैविक उपाय:** हेक्टरी ५ कामगंध सापळे लावा. निंबोळी अर्क ५% फवारा.\n"
                 "3. **रासायनिक उपाय:** इमामेक्टिन बेन्झोएट ५% SG — ४ ग्रॅम/१० लि.\n\n"
-                "💡 *सकाळी किंवा सायंकाळी फवारणी करा.*\n\n"
-                "🔑 **GEMINI_API_KEY .env मध्ये टाका म्हणजे लाइव्ह AI उत्तरे मिळतील!**"
-            ), "ICAR-KVK कीड नियंत्रण मार्गदर्शिका (Demo)"
+                "💡 *सकाळी किंवा सायंकाळी फवारणी करा.*"
+            ), ""
         if language == 'hi':
             return (
-                "🌾 **कीट नियंत्रण सलाह (Demo Mode):**\n\n"
-                "1. **लक्षण:** पत्तियों में छेद — इल्ली का संकेत.\n"
-                "2. **जैविक उपाय:** ५ फेरोमोन ट्रैप/एकड़। नीम तेल ५% छिड़काव.\n"
+                "🌾 **कीट नियंत्रण सलाह:**\n\n"
+                "1. **लक्षण:** पत्तियों में छेद — इल्ली का संकेत।\n"
+                "2. **जैविक उपाय:** ५ फेरोमोन ट्रैप/एकड़। नीम तेल ५% छिड़काव।\n"
                 "3. **रासायनिक उपाय:** इमामेक्टिन बेंजोएट ५% SG — ४ ग्राम/१० लि.\n\n"
-                "💡 *सुबह या शाम छिड़काव करें।*\n\n"
-                "🔑 **GEMINI_API_KEY .env में डालें — Live AI जवाब पाएं!**"
-            ), "ICAR कृषि विज्ञान केंद्र (Demo)"
+                "💡 *सुबह या शाम छिड़काव करें।*"
+            ), ""
         return (
-            "🌾 **Pest Control Advisory (Demo Mode):**\n\n"
+            "🌾 **Pest Control Advisory:**\n\n"
             "1. **Symptoms:** Perforated leaves — indicates leaf-eating caterpillar.\n"
             "2. **Biological:** 5 pheromone traps/acre. Spray NSKE 5% (50ml/10L).\n"
             "3. **Chemical:** Emamectin Benzoate 5% SG @ 4g/10L.\n\n"
-            "💡 *Spray during early morning or evening.*\n\n"
-            "🔑 **Add GEMINI_API_KEY to .env for live AI responses!**"
-        ), "ICAR Agricultural Research Guide (Demo)"
+            "💡 *Spray during early morning or evening.*"
+        ), ""
 
     # Weather
     weather_kw = ['weather', 'हवामान', 'पाऊस', 'मौसम', 'बारिश', 'rain',
@@ -324,27 +318,24 @@ def fallback_response(user_query: str, language: str, farmer: dict):
     if any(w in lower for w in weather_kw):
         if language == 'mr':
             return (
-                "🌦️ **हवामान अंदाज (Demo Mode):**\n\n"
+                "🌦️ **हवामान अंदाज:**\n\n"
                 "• **तापमान:** कमाल ३२°C | किमान २१°C\n"
                 "• **अंदाज:** दुपारनंतर हलक्या पावसाची ४०% शक्यता.\n"
-                "• **सल्ला:** कापलेला माल सुरक्षित ठेवा. फवारणी पावसाआधी करू नका.\n\n"
-                "🔑 **GEMINI_API_KEY जोडा — थेट IMD आधारित AI उत्तर मिळेल!**"
-            ), "IMD कृषी हवामान सेवा (Demo)"
+                "• **सल्ला:** कापलेला माल सुरक्षित ठेवा. फवारणी पावसाआधी करू नका."
+            ), ""
         if language == 'hi':
             return (
-                "🌦️ **मौसम पूर्वानुमान (Demo Mode):**\n\n"
+                "🌦️ **मौसम पूर्वानुमान:**\n\n"
                 "• **तापमान:** अधिकतम ३२°C | न्यूनतम २१°C\n"
-                "• **अनुमान:** दोपहर बाद हल्की बारिश की ४०% संभावना.\n"
-                "• **सलाह:** कटी फसल सुरक्षित रखें।\n\n"
-                "🔑 **GEMINI_API_KEY .env में डालें!**"
-            ), "IMD ग्रामीण कृषि मौसम सेवा (Demo)"
+                "• **अनुमान:** दोपहर बाद हल्की बारिश की ४०% संभावना।\n"
+                "• **सलाह:** कटी फसल सुरक्षित रखें और बारिश से पहले छिड़काव न करें।"
+            ), ""
         return (
-            "🌦️ **Weather Forecast (Demo Mode):**\n\n"
+            "🌦️ **Weather Forecast:**\n\n"
             "• **Temp:** High 32°C | Low 21°C\n"
             "• **Forecast:** 40% chance of light afternoon showers.\n"
-            "• **Advisory:** Protect harvested produce. Avoid spraying before rain.\n\n"
-            "🔑 **Add GEMINI_API_KEY to .env for live responses!**"
-        ), "IMD Agro-Met Service (Demo)"
+            "• **Advisory:** Protect harvested produce. Avoid spraying before rain."
+        ), ""
 
     # Government Schemes
     scheme_kw = ['kisan', 'योजना', 'हप्ता', 'subsidy', 'योजनाएं', 'scheme',
@@ -352,62 +343,53 @@ def fallback_response(user_query: str, language: str, farmer: dict):
     if any(w in lower for w in scheme_kw):
         if language == 'mr':
             return (
-                "🏛️ **PM-KISAN व शासकीय योजना (Demo Mode):**\n\n"
+                "🏛️ **PM-KISAN व शासकीय योजना:**\n\n"
                 "• **PM-KISAN:** वार्षिक ₹६,००० (दर ४ महिन्यांनी ₹२,०००) DBT द्वारे.\n"
                 "• **अटी:** आधार-लिंक बँक खाते + e-KYC पूर्ण + भूमी अभिलेख पडताळणी.\n"
-                "• **नमो शेतकरी:** महाराष्ट्राकडून अतिरिक्त ₹६,०००/वर्ष.\n\n"
-                "🔑 **GEMINI_API_KEY जोडा — सविस्तर AI सल्ला मिळेल!**"
-            ), "कृषी व शेतकरी कल्याण मंत्रालय (Demo)"
+                "• **नमो शेतकरी:** महाराष्ट्राकडून अतिरिक्त ₹६,०००/वर्ष."
+            ), ""
         if language == 'hi':
             return (
-                "🏛️ **PM-KISAN योजना (Demo Mode):**\n\n"
-                "• **लाभ:** ₹६,०००/वर्ष — ३ किस्तों में DBT.\n"
-                "• **शर्तें:** आधार-लिंक बैंक खाता + e-KYC + भूमि सत्यापन.\n\n"
-                "🔑 **GEMINI_API_KEY .env में डालें — Live AI जवाब पाएं!**"
-            ), "कृषि मंत्रालय, भारत सरकार (Demo)"
+                "🏛️ **PM-KISAN व सरकारी योजनाएं:**\n\n"
+                "• **लाभ:** ₹६,०००/वर्ष — ३ किस्तों में DBT।\n"
+                "• **शर्तें:** आधार-लिंक बैंक खाता + e-KYC + भूमि सत्यापन।"
+            ), ""
         return (
-            "🏛️ **PM-KISAN & Government Schemes (Demo Mode):**\n\n"
+            "🏛️ **PM-KISAN & Government Schemes:**\n\n"
             "• **Benefit:** ₹6,000/year in 3 installments via DBT.\n"
-            "• **Requirements:** Aadhaar-linked bank account + e-KYC + land record.\n\n"
-            "🔑 **Add GEMINI_API_KEY to .env for live AI responses!**"
-        ), "Ministry of Agriculture, Govt of India (Demo)"
+            "• **Requirements:** Aadhaar-linked bank account + e-KYC + land record verification."
+        ), ""
 
-    # Default generic demo
+    # Default generic response
     if language == 'mr':
         return (
             f"🌾 नमस्कार {name} जी!\n\n"
-            "मी **कृषी सखी AI** आहे, परंतु सध्या मी **Demo Mode** मध्ये आहे.\n\n"
-            "मी खालील विषयांत मदत करू शकते:\n"
+            "मी **कृषी सखी AI** आहे. मी तुम्हाला खालील विषयांत मदत करू शकते:\n"
             "• पिकांवरील कीड व रोग निदान\n"
             "• हवामान व पावसाचा अंदाज\n"
             "• खत व सिंचन व्यवस्थापन\n"
             "• PM-Kisan व शासकीय योजना\n\n"
-            "🔑 **पूर्ण AI सक्रिय करण्यासाठी:** `.env` मध्ये `GEMINI_API_KEY` टाका.\n"
-            "मोफत Key: https://aistudio.google.com/app/apikey"
-        ), "कृषी सखी AI (Demo Mode)"
+            "कृपया तुमचा शेतीविषयक प्रश्न विचारा!"
+        ), ""
     if language == 'hi':
         return (
             f"🌾 नमस्ते {name} जी!\n\n"
-            "मैं **कृषि सखी AI** हूँ, लेकिन अभी **Demo Mode** में हूँ.\n\n"
-            "मैं इन विषयों में मदद कर सकती हूँ:\n"
+            "मैं **कृषि सखी AI** हूँ। मैं इन विषयों में आपकी मदद कर सकती हूँ:\n"
             "• फसल कीट एवं रोग प्रबंधन\n"
             "• मौसम व वर्षा पूर्वानुमान\n"
             "• खाद व सिंचाई प्रबंधन\n"
             "• सरकारी कृषि योजनाएं\n\n"
-            "🔑 **Live AI के लिए:** `.env` में `GEMINI_API_KEY` डालें.\n"
-            "मुफ्त Key: https://aistudio.google.com/app/apikey"
-        ), "कृषि सखी AI (Demo Mode)"
+            "कृपया अपना खेती से जुड़ा सवाल पूछें!"
+        ), ""
     return (
         f"🌾 Hello {name}!\n\n"
-        "I'm **Krishi Sakhi AI**, currently in **Demo Mode**.\n\n"
-        "I can help you with:\n"
+        "I'm **Krishi Sakhi AI**. I can help you with:\n"
         "• Crop pest & disease diagnosis\n"
         "• Weather forecasts & rain alerts\n"
         "• Fertilizer & irrigation management\n"
         "• PM-KISAN & government schemes\n\n"
-        "🔑 **To enable full AI:** Add `GEMINI_API_KEY` to your `.env` file.\n"
-        "Get a free key at: https://aistudio.google.com/app/apikey"
-    ), "Krishi Sakhi AI (Demo Mode)"
+        "Please ask your farming question!"
+    ), ""
 
 # ============================================================
 # FLASK ROUTES
@@ -536,7 +518,7 @@ def chat_dashboard():
 def api_chat():
     """
     Main Krishi Sakhi AI Chat Endpoint.
-    Uses Google Gemini API when GEMINI_API_KEY is configured.
+    Uses Groq AI API when GROQ_API_KEY is configured.
     Falls back to curated demo responses when key is absent.
     """
     if 'user' not in session:
@@ -550,15 +532,15 @@ def api_chat():
     if not user_query:
         return jsonify({'error': 'Empty query'}), 400
 
-    # Try Gemini API with RAG retrieval
-    response_text, source, rag_chunks = ask_gemini(user_query, language, farmer)
+    # Try Groq API with RAG retrieval
+    response_text, source, rag_chunks = ask_groq(user_query, language, farmer)
 
     # Route the fallback correctly:
     # - API key IS configured but call failed → friendly "server busy" message
     # - API key NOT configured → static demo response
     if response_text is None:
-        if GEMINI_READY:
-            # Key is set but Gemini API failed (quota / timeout / network)
+        if GROQ_READY:
+            # Key is set but Groq API failed (quota / timeout / network)
             response_text, source = _server_busy_message(language, farmer)
         else:
             # No API key — show demo/static responses
@@ -583,7 +565,7 @@ def api_chat():
         'source':   source,
         'source_documents': source_documents,
         'language': language,
-        'ai_powered': GEMINI_READY,
+        'ai_powered': GROQ_READY,
         'rag_active': len(source_documents) > 0
     })
 
@@ -593,8 +575,9 @@ def api_status():
     """Health-check endpoint showing AI configuration state."""
     return jsonify({
         'app':        'Krishi Sakhi',
-        'ai_ready':   GEMINI_READY,
-        'model':      Config.GEMINI_MODEL if GEMINI_READY else 'Demo Mode (no key)',
+        'ai_ready':   GROQ_READY,
+        'provider':   'Groq',
+        'model':      Config.GROQ_MODEL if GROQ_READY else 'Demo Mode (no key)',
         'version':    '1.0.0'
     })
 

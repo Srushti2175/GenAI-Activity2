@@ -12,7 +12,6 @@ import re
 import math
 import numpy as np
 import faiss
-import google.generativeai as genai
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
@@ -138,12 +137,14 @@ def search_knowledge_base(query: str, top_k: int = 3, min_score: float = 0.30):
         return res
 
     api_key = Config.GEMINI_API_KEY
-    if not api_key or api_key == "your_gemini_api_key_here":
+    # Skip remote embedding call if Gemini API key is missing or not a valid AIza... key
+    if not api_key or api_key == "your_gemini_api_key_here" or not api_key.startswith("AIza"):
         res = search_bm25(query, top_k=top_k)
         _query_cache[cache_key] = res
         return res
 
     try:
+        import google.generativeai as genai
         genai.configure(api_key=api_key)
         resp = genai.embed_content(
             model=EMBEDDING_MODEL,
