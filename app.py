@@ -7,6 +7,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from werkzeug.security import generate_password_hash, check_password_hash
 from gtts import gTTS
 from config import Config
+from utils.rag_engine import search_knowledge_base, format_rag_context, get_rag_status
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -21,9 +22,9 @@ if GEMINI_READY:
     gemini_model = genai.GenerativeModel(
         model_name=Config.GEMINI_MODEL,
         generation_config=genai.GenerationConfig(
-            temperature=0.7,
-            top_p=0.95,
-            max_output_tokens=1024,
+            temperature=0.4,
+            top_p=0.9,
+            max_output_tokens=380,
         ),
         safety_settings=[
             {"category": "HARM_CATEGORY_HARASSMENT",       "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
@@ -92,9 +93,9 @@ DEMO_CHAT_SESSIONS = [
 ]
 
 # ============================================================
-# HELPER: BUILD LANGUAGE-AWARE GEMINI PROMPT
+# HELPER: BUILD LANGUAGE-AWARE GEMINI PROMPT WITH RAG CONTEXT
 # ============================================================
-def build_prompt(user_query: str, language: str, farmer: dict) -> str:
+def build_prompt(user_query: str, language: str, farmer: dict, rag_chunks: list = None) -> str:
     lang_map = {"mr": "Marathi (मराठी)", "hi": "Hindi (हिंदी)", "en": "English"}
     lang_label = lang_map.get(language, "Marathi (मराठी)")
 
@@ -105,39 +106,62 @@ def build_prompt(user_query: str, language: str, farmer: dict) -> str:
         f"User's Selected Interface Language: {lang_label}"
     )
 
-    return (
-        f"{SYSTEM_PROMPT}\n\n"
-        f"--- Farmer Context ---\n{farmer_context}\n\n"
-        f"--- Farmer's Question ---\n{user_query}\n\n"
+    rag_text = format_rag_context(rag_chunks) if rag_chunks else ""
+
+    parts = [SYSTEM_PROMPT]
+    if rag_text:
+        parts.append(rag_text)
+    parts.append(f"--- Farmer Context ---\n{farmer_context}")
+    parts.append(f"--- Farmer's Question ---\n{user_query}")
+    parts.append(
         f"[MANDATORY LANGUAGE INSTRUCTION]: The farmer has selected {lang_label}. "
         f"Your response will be READ OUT LOUD in {lang_label} voice using Text-To-Speech. "
         f"You MUST write the ENTIRE answer in {lang_label}."
     )
+    if rag_chunks:
+        parts.append(
+            "[RAG CITATION INSTRUCTION]: Prioritize facts from the verified agricultural knowledge base above. "
+            "When referencing specific guidance (e.g. from the Organic Farming Training Manual or Pest Guides), "
+            "mention the manual name or page number in your answer so the farmer knows the official source."
+        )
+
+    return "\n\n".join(parts)
 
 # ============================================================
-# HELPER: CALL GEMINI API WITH ULTRA-FAST REUSE
+# HELPER: CALL GEMINI API WITH ULTRA-FAST REUSE & RAG RETRIEVAL
 # ============================================================
 def ask_gemini(user_query: str, language: str, farmer: dict):
     global gemini_model
     if not Config.GEMINI_API_KEY or Config.GEMINI_API_KEY == 'your_gemini_api_key_here':
-        return None, None
+        return None, None, []
 
-    prompt = build_prompt(user_query, language, farmer)
+    # Semantic Vector Search via FAISS (with BM25 fallback)
+    try:
+        rag_chunks = search_knowledge_base(user_query, top_k=3)
+    except Exception as e:
+        print(f"[RAG Search Error in ask_gemini]: {e}")
+        rag_chunks = []
+
+    prompt = build_prompt(user_query, language, farmer, rag_chunks)
 
     # 1. Fast path: reuse already loaded model in milliseconds
+    failed_model = None
     if gemini_model:
         try:
-            response = gemini_model.generate_content(prompt)
+            response = gemini_model.generate_content(prompt, request_options={"timeout": 8})
             if response and response.text:
                 model_name = getattr(gemini_model, 'model_name', Config.GEMINI_MODEL)
-                source = f"Google Gemini AI ({model_name}) | Krishi Sakhi"
-                return response.text.strip(), source
+                source = f"Google Gemini AI ({model_name}) + FAISS RAG" if rag_chunks else f"Google Gemini AI ({model_name})"
+                return response.text.strip(), source, rag_chunks
         except Exception as e:
-            print(f"[Gemini Fast Path Error]: {e}")
+            failed_model = getattr(gemini_model, 'model_name', Config.GEMINI_MODEL).replace('models/', '')
+            print(f"[Gemini Fast Path Error ({failed_model})]: {e}")
 
-    # 2. Fallback path: initialize fastest candidate model
-    candidate_models = [Config.GEMINI_MODEL, 'gemini-2.5-flash', 'gemini-flash-latest']
+    # 2. Fallback path: initialize fastest candidate model (skipping the failed one)
+    candidate_models = [Config.GEMINI_MODEL, 'gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-2.5-flash']
     seen = set()
+    if failed_model:
+        seen.add(failed_model)
     candidate_models = [m for m in candidate_models if not (m in seen or seen.add(m))]
 
     for model_name in candidate_models:
@@ -145,21 +169,21 @@ def ask_gemini(user_query: str, language: str, farmer: dict):
             m = genai.GenerativeModel(
                 model_name=model_name,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.6,
+                    temperature=0.4,
                     top_p=0.9,
-                    max_output_tokens=600,
+                    max_output_tokens=380,
                 )
             )
-            response = m.generate_content(prompt)
+            response = m.generate_content(prompt, request_options={"timeout": 8})
             if response and response.text:
                 gemini_model = m
-                source = f"Google Gemini AI ({model_name}) | Krishi Sakhi"
-                return response.text.strip(), source
+                source = f"Google Gemini AI ({model_name}) + FAISS RAG" if rag_chunks else f"Google Gemini AI ({model_name})"
+                return response.text.strip(), source, rag_chunks
         except Exception as e:
             print(f"[Gemini Error with {model_name}]: {e}")
             continue
 
-    return None, None
+    return None, None, []
 
 # ============================================================
 # HELPER: STATIC FALLBACK RESPONSES (when API key not set)
@@ -430,20 +454,34 @@ def api_chat():
     if not user_query:
         return jsonify({'error': 'Empty query'}), 400
 
-    # Try Gemini API first
-    response_text, source = ask_gemini(user_query, language, farmer)
+    # Try Gemini API with RAG retrieval
+    response_text, source, rag_chunks = ask_gemini(user_query, language, farmer)
 
     # Fallback to demo responses if Gemini not configured or errored
     if response_text is None:
         response_text, source = fallback_response(user_query, language, farmer)
+        rag_chunks = []
+
+    source_documents = []
+    for c in rag_chunks:
+        source_documents.append({
+            "file_name": c.get("source_file"),
+            "page": c.get("page"),
+            "category": c.get("category"),
+            "score": c.get("score"),
+            "match_type": c.get("match_type"),
+            "snippet": c.get("text", "")[:180] + "..."
+        })
 
     return jsonify({
         'status':   'success',
         'query':    user_query,
         'response': response_text,
         'source':   source,
+        'source_documents': source_documents,
         'language': language,
-        'ai_powered': GEMINI_READY
+        'ai_powered': GEMINI_READY,
+        'rag_active': len(source_documents) > 0
     })
 
 
@@ -504,22 +542,57 @@ def api_tts():
 @app.route('/api/knowledge')
 def api_knowledge():
     """
-    Returns statistics and manifest of agricultural PDF knowledge base.
-    Used for monitoring ingested agricultural reference guides for RAG (Step 4 & 5).
+    Returns statistics and manifest of agricultural PDF knowledge base,
+    including live FAISS vector index status (Step 4 & Step 5 RAG).
     """
     manifest_path = os.path.join(os.path.dirname(__file__), "data", "knowledge_base", "knowledge_manifest.json")
+    manifest = {}
     if os.path.exists(manifest_path):
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return jsonify(data)
+                manifest = json.load(f)
         except Exception as e:
-            return jsonify({"error": f"Failed to read knowledge manifest: {str(e)}"}), 500
+            manifest = {"error": f"Failed to read knowledge manifest: {str(e)}"}
+
+    # Append live RAG / FAISS engine status
+    rag_info = get_rag_status()
+    manifest["rag_engine"] = rag_info
+    return jsonify(manifest)
+
+
+@app.route('/api/search', methods=['GET', 'POST'])
+def api_search():
+    """
+    Direct semantic retrieval endpoint for testing and RAG inspections.
+    Queries the FAISS vector index (with BM25 fallback) and returns top matched agricultural chunks.
+    """
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        query = data.get('query', '').strip()
+        top_k = int(data.get('top_k', 3))
+    else:
+        query = request.args.get('q', '').strip()
+        top_k = int(request.args.get('k', 3))
+
+    if not query:
+        return jsonify({"error": "Query parameter 'q' or json 'query' is required"}), 400
+
+    results = search_knowledge_base(query, top_k=top_k)
     return jsonify({
-        "status": "empty",
-        "message": "No knowledge base manifest found. Run 'python ingest_knowledge.py' first.",
-        "total_documents": 0,
-        "total_chunks": 0
+        "status": "success",
+        "query": query,
+        "count": len(results),
+        "results": [
+            {
+                "file_name": r.get("source_file"),
+                "page": r.get("page"),
+                "category": r.get("category"),
+                "score": r.get("score"),
+                "match_type": r.get("match_type"),
+                "snippet": r.get("text", "")[:250] + "..."
+            }
+            for r in results
+        ]
     })
 
 

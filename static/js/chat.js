@@ -148,7 +148,7 @@ function sendMessage(text) {
     .then(data => {
         removeTypingIndicator(typingId);
         if (data.status === 'success') {
-            const listenBtn = appendMessage('bot', data.response, data.source);
+            const listenBtn = appendMessage('bot', data.response, data.source, data.source_documents);
             if (autoSpeakEnabled) {
                 // Read out the response aloud in loud, clear voice
                 speakText(data.response, listenBtn);
@@ -164,7 +164,7 @@ function sendMessage(text) {
     });
 }
 
-function appendMessage(sender, content, source) {
+function appendMessage(sender, content, source, sourceDocuments) {
     const container = document.getElementById('chatMessages');
     const row = document.createElement('div');
     row.className = `message-row ${sender}`;
@@ -186,11 +186,39 @@ function appendMessage(sender, content, source) {
         const formattedHtml = typeof marked !== 'undefined' ? marked.parse(content) : content.replace(/\n/g, '<br>');
         bubble.innerHTML = formattedHtml;
 
+        // RAG Verified Source Documents Badges
+        if (sourceDocuments && sourceDocuments.length > 0) {
+            const ragBox = document.createElement('div');
+            ragBox.className = 'rag-sources-container';
+            ragBox.innerHTML = '<div class="rag-sources-title"><i class="fa-solid fa-file-circle-check"></i> <span>पुस्तकातील अधिकृत संदर्भ (Verified Manuals):</span></div>';
+            
+            const badgesWrapper = document.createElement('div');
+            badgesWrapper.className = 'rag-badges-wrapper';
+
+            sourceDocuments.forEach(doc => {
+                const badge = document.createElement('div');
+                badge.className = 'rag-doc-pill';
+                const cleanName = (doc.file_name || 'Agri Manual')
+                    .replace(/_/g, ' ')
+                    .replace('.pdf', '');
+                const scorePercent = doc.score ? Math.round(doc.score * 100) : null;
+                const scoreText = scorePercent ? ` (${scorePercent}% अचूकता)` : '';
+                
+                badge.innerHTML = `<i class="fa-solid fa-book"></i> <strong>${cleanName}</strong> - पान क्र. ${doc.page}${scoreText}`;
+                if (doc.snippet) {
+                    badge.title = doc.snippet;
+                }
+                badgesWrapper.appendChild(badge);
+            });
+            ragBox.appendChild(badgesWrapper);
+            bubble.appendChild(ragBox);
+        }
+
         // Source Citation badge
         if (source) {
             const sourceBadge = document.createElement('div');
             sourceBadge.className = 'source-tag';
-            sourceBadge.innerHTML = `<i class="fa-solid fa-book-open"></i> <span>संदर्भ (Source): ${source}</span>`;
+            sourceBadge.innerHTML = `<i class="fa-solid fa-sparkles"></i> <span>इंजिन: ${source}</span>`;
             bubble.appendChild(sourceBadge);
         }
 
