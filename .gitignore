@@ -35,7 +35,8 @@ uploads/
 # Log files
 *.log
 
-# OS files
+# OS & scratch files
 .DS_Store
 Thumbs.db
-README.md
+scratch/
+README_PROJECT_INFO.md
