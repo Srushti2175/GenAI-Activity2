@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import json
 import google.generativeai as genai
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -498,6 +499,28 @@ def api_tts():
     except Exception as e:
         print(f"[TTS Generation Error]: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge')
+def api_knowledge():
+    """
+    Returns statistics and manifest of agricultural PDF knowledge base.
+    Used for monitoring ingested agricultural reference guides for RAG (Step 4 & 5).
+    """
+    manifest_path = os.path.join(os.path.dirname(__file__), "data", "knowledge_base", "knowledge_manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return jsonify(data)
+        except Exception as e:
+            return jsonify({"error": f"Failed to read knowledge manifest: {str(e)}"}), 500
+    return jsonify({
+        "status": "empty",
+        "message": "No knowledge base manifest found. Run 'python ingest_knowledge.py' first.",
+        "total_documents": 0,
+        "total_chunks": 0
+    })
 
 
 if __name__ == '__main__':
