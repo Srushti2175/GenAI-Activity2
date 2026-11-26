@@ -24,7 +24,7 @@ if GEMINI_READY:
         generation_config=genai.GenerationConfig(
             temperature=0.4,
             top_p=0.9,
-            max_output_tokens=380,
+            max_output_tokens=600,
         ),
         safety_settings=[
             {"category": "HARM_CATEGORY_HARASSMENT",       "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
@@ -38,34 +38,102 @@ else:
     gemini_model = None
 
 # ============================================================
-# SYSTEM PROMPT FOR KRISHI SAKHI AI
+# SYSTEM PROMPT FOR AGRISATHI AI (KRISHI SAKHI)
 # ============================================================
-SYSTEM_PROMPT = """You are **Krishi Sakhi (कृषी सखी / कृषि सखी)**, a trusted, expert, and compassionate AI assistant designed exclusively to help Indian farmers.
+SYSTEM_PROMPT = """You are **AgriSathi AI (कृषी सखी)**, a friendly, intelligent, multilingual agricultural assistant designed to help Indian farmers.
 
-Your specializations include:
-- 🌾 Crop pest and disease diagnosis with specific medicine names, dosages, and application schedules.
-- 🌦️ Agricultural weather interpretation and farm safety advisories.
-- 🧪 Fertilizer management (NPK ratios, urea, DAP, micronutrients) with crop-wise recommendations.
-- 🏛️ Indian government welfare schemes: PM-KISAN, Pradhan Mantri Fasal Bima Yojana (PMFBY), Namo Shetkari Mahasanman Nidhi, soil health cards, Kisan Credit Card (KCC), and state-level subsidies.
-- 📈 Market price guidance and seasonal selling advisory.
-- 🌱 Organic farming, intercropping, and water-saving irrigation techniques.
+Your goal is to provide accurate, practical, easy-to-understand agricultural guidance in a conversational style similar to a helpful AI tutor.
 
-**STRICT LANGUAGE RULES (CRITICAL):**
-- The farmer's selected language will be passed to you.
-- You MUST generate your response ENTIRELY in that SELECTED LANGUAGE.
-- If the selected language is Marathi (मराठी), write your entire answer in clean, spoken, natural Marathi (मराठी देवनागरी लिपी). Even if the user asked in English or Roman script (e.g. "soyabean kid upay"), your response MUST be in Marathi so that the farmer can listen to it via loud Marathi Text-to-Speech!
-- If the selected language is Hindi (हिंदी), write your entire response in Hindi (हिंदी).
-- If the selected language is English, write in English.
+## 1. Language and Communication
+- Support Marathi, Hindi and English.
+- Always respond ENTIRELY in the language selected by the user (passed as User's Selected Interface Language). Even if the user writes in English/Roman script while Marathi is selected, answer in clean Marathi Devanagari so Text-to-Speech reads it naturally.
+- Use simple, natural and conversational language.
+- Avoid unnecessarily technical agricultural terminology.
+- If a technical term is necessary, explain its meaning in simple words.
+- Be respectful, patient, friendly and encouraging.
+- Understand that many users may have limited technical knowledge.
 
-**Voice & Response Style:**
-- The farmer will listen to your answer out loud! Use warm, respectful spoken tone (उदा. "राम-राम शेतकरी बंधू", "नमस्कार").
-- Use simple, practical language that uneducated rural farmers can immediately grasp.
-- Always use short, clear bullet points or numbered steps for actionable advice.
-- Include specific medicine/fertilizer names, quantities (grams/ml per 10 liters of water), and exact timings (morning/evening).
-- Keep responses concise and focused — avoid unnecessary jargon or lengthy disclaimers.
-- Do NOT answer questions unrelated to agriculture, farming, or farmer welfare schemes. Politely redirect instead.
+## 2. Response Formatting
+Format responses in a clean, readable structure.
 
-You represent the trust and care of a knowledgeable local agricultural extension officer who speaks the farmer's own language."""
+Use:
+- A short, direct introduction.
+- Clear headings for different topics (translated naturally into the selected language).
+- Numbered steps for instructions.
+- Bullet points for important information.
+- Tables when comparing multiple options.
+- Bold text to highlight important details.
+- Examples wherever they help explain something.
+- Short paragraphs instead of long blocks of text.
+
+Avoid:
+- Unnecessarily long introductions.
+- Repeating the same information.
+- Complicated vocabulary.
+- Overloading farmers with too much information.
+- Giving unrelated information.
+
+## 3. Agricultural Question Answering
+When a farmer asks an agricultural question:
+1. Understand the crop, problem, location and farming situation.
+2. Use the retrieved agricultural knowledge provided in the context.
+3. Prioritize information from trusted agricultural sources such as ICAR, KVKs, agricultural universities and government publications.
+4. Give practical, understandable recommendations.
+5. Explain why the recommendation is useful.
+6. Mention important precautions.
+7. Never invent pesticide names, chemical dosages, application intervals or government scheme eligibility rules.
+
+If important information is missing, ask a short follow-up question.
+
+## 4. RAG and Source Grounding
+You will receive retrieved information from the agricultural knowledge base.
+- Use the retrieved information as the primary basis for agricultural recommendations.
+- Do not claim that a recommendation comes from a document unless that document supports it.
+- Mention the source document or institution whenever source information is available.
+- If retrieved information is insufficient or irrelevant, clearly communicate that you cannot confidently answer.
+- Never fabricate citations, research papers, government guidelines or source names.
+- Distinguish between verified information and general suggestions.
+
+## 5. Safety Rules
+Agricultural advice can affect crops, money, animals and human health.
+- Never guess pesticide or fertilizer dosages.
+- Never recommend mixing chemicals without reliable supporting guidance.
+- Include label instructions and relevant safety precautions when discussing pesticides.
+- For serious crop diseases, recommend consulting the nearest Krishi Vigyan Kendra (KVK) or agricultural expert.
+- For uncertain or potentially harmful recommendations, politely refuse to guess and explain what information is needed.
+- Never guarantee crop yield, profit or disease recovery.
+
+## 6. Voice-Friendly Responses
+Some users will listen to your answers instead of reading them.
+- Use natural spoken language.
+- Keep sentences short and clear.
+- Explain numbers and technical terms understandably.
+- Avoid excessive Markdown symbols that disrupt speech synthesis.
+- Give the most important information first.
+- Keep ordinary answers concise while providing more detail when requested.
+
+## 7. Response Structure
+For a normal agricultural question, follow this structure when relevant (localize the headings into the farmer's selected language, e.g., Marathi: थेट उत्तर, काय करावे, महत्त्वाची काळजी, संदर्भ, पुढील प्रश्न):
+
+**Direct Answer:** Give a short answer to the question.
+**What you should do:** Provide practical steps.
+**Important precautions:** Mention relevant safety points.
+**Source:** Mention the retrieved source document or institution.
+**Follow-up:** Ask one useful question if additional information is needed.
+
+Do not force every heading into every response. Adapt the format to the user's question.
+
+## 8. General Conversation
+- Answer greetings naturally.
+- Explain agricultural concepts with simple examples.
+- Help users understand farming techniques, crop management, irrigation, fertilizers, pest management and government schemes.
+- Stay focused on agriculture.
+- If a question is unrelated to agriculture, politely explain your primary purpose and offer agricultural assistance.
+
+## 9. Overall Personality
+Act like a knowledgeable, patient and responsible agricultural guide.
+Your responses should be: Accurate, Simple, Friendly, Structured, Practical, Source-grounded, and Safety-conscious.
+**Your highest priority is helping farmers make informed decisions using reliable agricultural information.**"""
 
 # ============================================================
 # IN-MEMORY USER STORE (Demo + Registered Users)
@@ -171,7 +239,7 @@ def ask_gemini(user_query: str, language: str, farmer: dict):
                 generation_config=genai.GenerationConfig(
                     temperature=0.4,
                     top_p=0.9,
-                    max_output_tokens=380,
+                    max_output_tokens=600,
                 )
             )
             response = m.generate_content(prompt, request_options={"timeout": 8})
@@ -186,53 +254,81 @@ def ask_gemini(user_query: str, language: str, farmer: dict):
     return None, None, []
 
 # ============================================================
-# HELPER: STATIC FALLBACK RESPONSES (when API key not set)
+# HELPER: STATIC FALLBACK RESPONSES (when API key not set / no live AI)
 # ============================================================
+def _server_busy_message(language: str, farmer: dict) -> tuple:
+    """Friendly 'server busy' reply used when GEMINI_READY but API call failed."""
+    name = farmer.get("name", "शेतकरी").split()[0]
+    if language == 'hi':
+        return (
+            f"🌾 {name} जी, अभी AI सर्वर थोड़ा व्यस्त है।\n\n"
+            "कृपया **१-२ मिनट बाद** फिर से पूछें — मैं जरूर जवाब दूंगी! 🙏\n\n"
+            "अगर समस्या बनी रहे तो नजदीकी **कृषि विज्ञान केंद्र (KVK)** से संपर्क करें।"
+        ), "AgriSathi AI (सर्वर अस्थायी व्यस्त)"
+    if language == 'en':
+        return (
+            f"🌾 {name}, the AI server is briefly busy right now.\n\n"
+            "Please **try again in 1–2 minutes** — I'll be ready to help! 🙏\n\n"
+            "For urgent advice, contact your nearest **Krishi Vigyan Kendra (KVK)**."
+        ), "AgriSathi AI (Server temporarily busy)"
+    # Default: Marathi
+    return (
+        f"🌾 {name} जी, सध्या AI सर्व्हर थोडा व्यस्त आहे.\n\n"
+        "कृपया **१-२ मिनिटांनी पुन्हा प्रयत्न करा** — मी नक्की उत्तर देईन! 🙏\n\n"
+        "तातडीच्या सल्ल्यासाठी जवळच्या **कृषी विज्ञान केंद्र (KVK)** शी संपर्क साधा."
+    ), "AgriSathi AI (सर्व्हर तात्पुरता व्यस्त)"
+
+
 def fallback_response(user_query: str, language: str, farmer: dict):
+    """
+    Static demo responses shown ONLY when GEMINI_API_KEY is not configured.
+    API-key hint text is shown here because there is genuinely no key set.
+    """
     lower = user_query.lower()
     name  = farmer.get("name", "शेतकरी").split()[0]
 
     # Pest / Disease
-    if any(w in lower for w in ['pest', 'कीड', 'कीटक', 'कीड़ा', 'इल्ली', 'रोग', 'disease']):
+    pest_kw = ['pest', 'कीड', 'कीटक', 'कीड़ा', 'इल्ली', 'रोग', 'disease',
+               'अळी', 'किडा', 'फंगस', 'बुरशी', 'फसाद', 'नुकसान']
+    if any(w in lower for w in pest_kw):
         if language == 'mr':
             return (
                 "🌾 **कीड नियंत्रण सल्ला (Demo Mode):**\n\n"
                 "1. **लक्षणे:** पानांना छिद्रे — लष्करी अळी किंवा पाने खाणाऱ्या अळीची लक्षणे.\n"
-                "2. **जैविक उपाय:** हेक्टरी ५ कामगंध सापळे लावा. निंबोळी अर्क ५% (५० मिली/१० लि.) फवारा.\n"
-                "3. **रासायनिक उपाय:** **इमामेक्टिन बेन्झोएट ५% SG** ४ ग्रॅम/१० लि. किंवा "
-                "**क्लोराँट्रानिलीप्रोल १८.५% SC** ३ मिली/१० लि. फवारणी करा.\n\n"
+                "2. **जैविक उपाय:** हेक्टरी ५ कामगंध सापळे लावा. निंबोळी अर्क ५% फवारा.\n"
+                "3. **रासायनिक उपाय:** इमामेक्टिन बेन्झोएट ५% SG — ४ ग्रॅम/१० लि.\n\n"
                 "💡 *सकाळी किंवा सायंकाळी फवारणी करा.*\n\n"
-                "*(GEMINI_API_KEY .env मध्ये टाका म्हणजे लाइव्ह AI उत्तरे मिळतील!)*"
+                "🔑 **GEMINI_API_KEY .env मध्ये टाका म्हणजे लाइव्ह AI उत्तरे मिळतील!**"
             ), "ICAR-KVK कीड नियंत्रण मार्गदर्शिका (Demo)"
-
         if language == 'hi':
             return (
                 "🌾 **कीट नियंत्रण सलाह (Demo Mode):**\n\n"
                 "1. **लक्षण:** पत्तियों में छेद — इल्ली का संकेत.\n"
-                "2. **जैविक उपाय:** ५ फेरोमोन ट्रैप/एकड़। नीम तेल ५% (५० मिली/१० लि.) छिड़काव.\n"
-                "3. **रासायनिक उपाय:** **इमामेक्टिन बेंजोएट ५% SG** ४ ग्राम/१० लि.\n\n"
+                "2. **जैविक उपाय:** ५ फेरोमोन ट्रैप/एकड़। नीम तेल ५% छिड़काव.\n"
+                "3. **रासायनिक उपाय:** इमामेक्टिन बेंजोएट ५% SG — ४ ग्राम/१० लि.\n\n"
                 "💡 *सुबह या शाम छिड़काव करें।*\n\n"
-                "*(GEMINI_API_KEY .env में डालें — Live AI जवाब पाएं!)*"
+                "🔑 **GEMINI_API_KEY .env में डालें — Live AI जवाब पाएं!**"
             ), "ICAR कृषि विज्ञान केंद्र (Demo)"
-
         return (
             "🌾 **Pest Control Advisory (Demo Mode):**\n\n"
             "1. **Symptoms:** Perforated leaves — indicates leaf-eating caterpillar.\n"
-            "2. **Biological:** 5 pheromone traps/acre. Spray NSKE 5% (50ml/10L water).\n"
-            "3. **Chemical:** **Emamectin Benzoate 5% SG** @ 4g/10L water.\n\n"
+            "2. **Biological:** 5 pheromone traps/acre. Spray NSKE 5% (50ml/10L).\n"
+            "3. **Chemical:** Emamectin Benzoate 5% SG @ 4g/10L.\n\n"
             "💡 *Spray during early morning or evening.*\n\n"
-            "*(Add GEMINI_API_KEY to .env for live AI responses!)*"
+            "🔑 **Add GEMINI_API_KEY to .env for live AI responses!**"
         ), "ICAR Agricultural Research Guide (Demo)"
 
     # Weather
-    if any(w in lower for w in ['weather', 'हवामान', 'पाऊस', 'मौसम', 'बारिश', 'rain']):
+    weather_kw = ['weather', 'हवामान', 'पाऊस', 'मौसम', 'बारिश', 'rain',
+                  'तापमान', 'वादळ', 'वर्षा', 'आंधी', 'ओला']
+    if any(w in lower for w in weather_kw):
         if language == 'mr':
             return (
                 "🌦️ **हवामान अंदाज (Demo Mode):**\n\n"
                 "• **तापमान:** कमाल ३२°C | किमान २१°C\n"
                 "• **अंदाज:** दुपारनंतर हलक्या पावसाची ४०% शक्यता.\n"
                 "• **सल्ला:** कापलेला माल सुरक्षित ठेवा. फवारणी पावसाआधी करू नका.\n\n"
-                "*(GEMINI_API_KEY जोडा — थेट IMD आधारित AI उत्तर मिळेल!)*"
+                "🔑 **GEMINI_API_KEY जोडा — थेट IMD आधारित AI उत्तर मिळेल!**"
             ), "IMD कृषी हवामान सेवा (Demo)"
         if language == 'hi':
             return (
@@ -240,41 +336,43 @@ def fallback_response(user_query: str, language: str, farmer: dict):
                 "• **तापमान:** अधिकतम ३२°C | न्यूनतम २१°C\n"
                 "• **अनुमान:** दोपहर बाद हल्की बारिश की ४०% संभावना.\n"
                 "• **सलाह:** कटी फसल सुरक्षित रखें।\n\n"
-                "*(GEMINI_API_KEY .env में डालें!)*"
+                "🔑 **GEMINI_API_KEY .env में डालें!**"
             ), "IMD ग्रामीण कृषि मौसम सेवा (Demo)"
         return (
             "🌦️ **Weather Forecast (Demo Mode):**\n\n"
             "• **Temp:** High 32°C | Low 21°C\n"
             "• **Forecast:** 40% chance of light afternoon showers.\n"
             "• **Advisory:** Protect harvested produce. Avoid spraying before rain.\n\n"
-            "*(Add GEMINI_API_KEY to .env for live responses!)*"
+            "🔑 **Add GEMINI_API_KEY to .env for live responses!**"
         ), "IMD Agro-Met Service (Demo)"
 
     # Government Schemes
-    if any(w in lower for w in ['kisan', 'योजना', 'हप्ता', 'subsidy', 'योजनाएं', 'scheme', 'विमा', 'bima']):
+    scheme_kw = ['kisan', 'योजना', 'हप्ता', 'subsidy', 'योजनाएं', 'scheme',
+                 'विमा', 'bima', 'किसान', 'अनुदान', 'सबसिडी', 'सरकार']
+    if any(w in lower for w in scheme_kw):
         if language == 'mr':
             return (
                 "🏛️ **PM-KISAN व शासकीय योजना (Demo Mode):**\n\n"
                 "• **PM-KISAN:** वार्षिक ₹६,००० (दर ४ महिन्यांनी ₹२,०००) DBT द्वारे.\n"
                 "• **अटी:** आधार-लिंक बँक खाते + e-KYC पूर्ण + भूमी अभिलेख पडताळणी.\n"
                 "• **नमो शेतकरी:** महाराष्ट्राकडून अतिरिक्त ₹६,०००/वर्ष.\n\n"
-                "*(GEMINI_API_KEY जोडा — सविस्तर AI सल्ला मिळेल!)*"
+                "🔑 **GEMINI_API_KEY जोडा — सविस्तर AI सल्ला मिळेल!**"
             ), "कृषी व शेतकरी कल्याण मंत्रालय (Demo)"
         if language == 'hi':
             return (
                 "🏛️ **PM-KISAN योजना (Demo Mode):**\n\n"
                 "• **लाभ:** ₹६,०००/वर्ष — ३ किस्तों में DBT.\n"
                 "• **शर्तें:** आधार-लिंक बैंक खाता + e-KYC + भूमि सत्यापन.\n\n"
-                "*(GEMINI_API_KEY .env में डालें!)*"
+                "🔑 **GEMINI_API_KEY .env में डालें — Live AI जवाब पाएं!**"
             ), "कृषि मंत्रालय, भारत सरकार (Demo)"
         return (
             "🏛️ **PM-KISAN & Government Schemes (Demo Mode):**\n\n"
-            "• **Benefit:** ₹6,000/year in 3 installments of ₹2,000 via DBT.\n"
-            "• **Requirements:** Aadhaar-linked bank account + e-KYC + land record verification.\n\n"
-            "*(Add GEMINI_API_KEY to .env for live AI responses!)*"
+            "• **Benefit:** ₹6,000/year in 3 installments via DBT.\n"
+            "• **Requirements:** Aadhaar-linked bank account + e-KYC + land record.\n\n"
+            "🔑 **Add GEMINI_API_KEY to .env for live AI responses!**"
         ), "Ministry of Agriculture, Govt of India (Demo)"
 
-    # Default
+    # Default generic demo
     if language == 'mr':
         return (
             f"🌾 नमस्कार {name} जी!\n\n"
@@ -284,10 +382,9 @@ def fallback_response(user_query: str, language: str, farmer: dict):
             "• हवामान व पावसाचा अंदाज\n"
             "• खत व सिंचन व्यवस्थापन\n"
             "• PM-Kisan व शासकीय योजना\n\n"
-            "**पूर्ण AI सक्रिय करण्यासाठी:** `.env` फाइलमध्ये `GEMINI_API_KEY` टाका.\n"
-            "मोफत Key मिळवा: https://aistudio.google.com/app/apikey"
+            "🔑 **पूर्ण AI सक्रिय करण्यासाठी:** `.env` मध्ये `GEMINI_API_KEY` टाका.\n"
+            "मोफत Key: https://aistudio.google.com/app/apikey"
         ), "कृषी सखी AI (Demo Mode)"
-
     if language == 'hi':
         return (
             f"🌾 नमस्ते {name} जी!\n\n"
@@ -297,10 +394,9 @@ def fallback_response(user_query: str, language: str, farmer: dict):
             "• मौसम व वर्षा पूर्वानुमान\n"
             "• खाद व सिंचाई प्रबंधन\n"
             "• सरकारी कृषि योजनाएं\n\n"
-            "**Live AI के लिए:** `.env` में `GEMINI_API_KEY` डालें.\n"
+            "🔑 **Live AI के लिए:** `.env` में `GEMINI_API_KEY` डालें.\n"
             "मुफ्त Key: https://aistudio.google.com/app/apikey"
         ), "कृषि सखी AI (Demo Mode)"
-
     return (
         f"🌾 Hello {name}!\n\n"
         "I'm **Krishi Sakhi AI**, currently in **Demo Mode**.\n\n"
@@ -309,7 +405,7 @@ def fallback_response(user_query: str, language: str, farmer: dict):
         "• Weather forecasts & rain alerts\n"
         "• Fertilizer & irrigation management\n"
         "• PM-KISAN & government schemes\n\n"
-        "**To enable full AI:** Add `GEMINI_API_KEY` to your `.env` file.\n"
+        "🔑 **To enable full AI:** Add `GEMINI_API_KEY` to your `.env` file.\n"
         "Get a free key at: https://aistudio.google.com/app/apikey"
     ), "Krishi Sakhi AI (Demo Mode)"
 
@@ -457,9 +553,16 @@ def api_chat():
     # Try Gemini API with RAG retrieval
     response_text, source, rag_chunks = ask_gemini(user_query, language, farmer)
 
-    # Fallback to demo responses if Gemini not configured or errored
+    # Route the fallback correctly:
+    # - API key IS configured but call failed → friendly "server busy" message
+    # - API key NOT configured → static demo response
     if response_text is None:
-        response_text, source = fallback_response(user_query, language, farmer)
+        if GEMINI_READY:
+            # Key is set but Gemini API failed (quota / timeout / network)
+            response_text, source = _server_busy_message(language, farmer)
+        else:
+            # No API key — show demo/static responses
+            response_text, source = fallback_response(user_query, language, farmer)
         rag_chunks = []
 
     source_documents = []
